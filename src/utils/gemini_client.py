@@ -6,7 +6,7 @@ class GeminiClient:
     def __init__(self):
         genai.configure(api_key=os.environ["GEMINI_API_KEY"])
         self.embed_model_name = "models/text-embedding-004"  
-        self.chat_model = genai.GenerativeModel('gemini-1.5-flash')
+        self.chat_model = genai.GenerativeModel('gemini-2.0-flash')
     
     def get_embedding(self, text: str) -> list[float]:
         result = genai.embed_content(
