@@ -38,3 +38,48 @@ class SupabaseClient:
         resp = self.client.table(table).insert(rows).execute()
         if resp.error:
             raise RuntimeError(resp.error.message)
+
+    # ---------- AUTHENTICATION ----------
+    def sign_up(self, email: str, password: str) -> dict:
+        """Register a new user with email and password."""
+        try:
+            response = self.client.auth.sign_up({
+                "email": email,
+                "password": password
+            })
+            return {
+                "user": response.user,
+                "session": response.session
+            }
+        except Exception as e:
+            raise RuntimeError(f"Sign up failed: {str(e)}")
+
+    def sign_in(self, email: str, password: str) -> dict:
+        """Sign in an existing user with email and password."""
+        try:
+            response = self.client.auth.sign_in_with_password({
+                "email": email,
+                "password": password
+            })
+            return {
+                "user": response.user,
+                "session": response.session,
+                "access_token": response.session.access_token if response.session else None
+            }
+        except Exception as e:
+            raise RuntimeError(f"Sign in failed: {str(e)}")
+
+    def sign_out(self, access_token: str) -> None:
+        """Sign out the current user."""
+        try:
+            self.client.auth.sign_out()
+        except Exception as e:
+            raise RuntimeError(f"Sign out failed: {str(e)}")
+
+    def get_user(self, access_token: str) -> dict:
+        """Get the current user information from access token."""
+        try:
+            response = self.client.auth.get_user(access_token)
+            return response.user
+        except Exception as e:
+            raise RuntimeError(f"Get user failed: {str(e)}")
