@@ -6,3 +6,6 @@ pydantic<2
 pandas
 numpy
 soccerdata
+streamlit
+fastapi
+uvicorn

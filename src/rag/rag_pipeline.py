@@ -2,7 +2,6 @@
 from .generator import ResponseGenerator
 from .query_processor import QueryProcessor
 
-
 class RAGPipeline:
     def __init__(
         self,
@@ -16,6 +15,6 @@ class RAGPipeline:
 
     def __call__(self, query: str) -> dict:
         qp = self.query_processor(query)
-        docs = self.retriever(qp["embedding"], qp["filters"])
+        docs = self.retriever(query_embedding=qp["embedding"], filters=qp["filters"], query=query)
         answer = self.generator(query, docs)
         return {"answer": answer, "context": docs}

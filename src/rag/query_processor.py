@@ -3,10 +3,9 @@
 
 class QueryProcessor:
     """Tạo embedding + (tùy chọn) phân tích intent/filters."""
-    def __init__(self, openai_client: GeminiClient):
-        self.openai = openai_client
+    def __init__(self, gemini_client: GeminiClient):
+        self.gemini = gemini_client
 
     def __call__(self, query: str) -> dict:
-        embedding = self.openai.get_embedding(query)
-        # Demo: chưa parse intent/filters → để rỗng
+        embedding = self.gemini.get_embedding(query)
         return {"embedding": embedding, "filters": None}
