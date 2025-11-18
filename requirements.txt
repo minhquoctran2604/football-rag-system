@@ -1,4 +1,4 @@
-﻿sentence-transformers
+sentence-transformers
 python-dotenv
 requests
 ragas
@@ -9,3 +9,4 @@ soccerdata
 streamlit
 fastapi
 uvicorn
+supabase
