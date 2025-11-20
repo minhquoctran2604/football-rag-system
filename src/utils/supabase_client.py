@@ -1,12 +1,6 @@
 import os
 from supabase import create_client, Client
 
-
-def get_supabase_client():
-    """Get Supabase client instance"""
-    return SupabaseClient()
-
-
 class SupabaseClient:
     def __init__(self) -> None:
         url: str = os.environ["SUPABASE_URL"]
@@ -21,13 +15,23 @@ class SupabaseClient:
         top_k: int = 5,
     ) -> list[dict]:
         """Search vectors using embedding"""
+        
+        # Select RPC based on table
+        rpc_name = "match_teams" if table == "teams" else "match_players"
+        
         payload = {
             "query_embedding": query_embedding,
             "match_count": top_k,
-            **(filters or {}),
+            "match_threshold": 0.3, # Default threshold
+            "filter": filters or {},
         }
-        resp = self.client.rpc("match_vector", payload).execute()
-        return resp.data
+        
+        try:
+            resp = self.client.rpc(rpc_name, payload).execute()
+            return resp.data
+        except Exception as e:
+            print(f"Error calling RPC {rpc_name}: {e}")
+            return []
 
     def insert(self, table: str, rows: list[dict]) -> list[dict]:
         """Insert rows into table"""

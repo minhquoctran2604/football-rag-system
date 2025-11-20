@@ -1,17 +1,18 @@
 ﻿from __future__ import annotations
 
 import json
-from typing import Dict
+from typing import Dict, Any
 
 from src.utils.gemini_client import GeminiClient
-from src.rag.types import QueryContext, Strategy  # Import Enum + dataclass
+from src.rag.types import QueryContext, Strategy
 
 
 class QueryProcessor:
     """Tạo embedding có điều kiện và trích xuất filters + strategy."""
 
-    def __init__(self, gemini_client: GeminiClient):
+    def __init__(self, gemini_client: GeminiClient, embedding_client: Any):
         self.gemini = gemini_client
+        self.embedding_client = embedding_client
 
         # Prompt trích filters (copy lại prompt cũ đầy đủ của bạn)
         self.system_prompt_filters = """
@@ -111,7 +112,7 @@ Response:
         strategy = self._decide_strategy(query, filters)
 
         embedding = (
-            self.gemini.get_embedding(query)
+            self.embedding_client.get_embedding(query)
             if strategy in (Strategy.SEMANTIC, Strategy.HYBRID)
             else None
         )
