@@ -50,24 +50,24 @@ def gen_team_bio(team_data: dict) -> str:
 
 def main():
     # 1. Load Model
-    print(f"Loading model: {MODEL_NAME}...")
+    logger.info(f"Loading model: {MODEL_NAME}...")
     model = SentenceTransformer(MODEL_NAME)
     
     # 2. Load Data
-    print(f"Reading data from {INPUT_FILE}...")
+    logger.info(f"Reading data from {INPUT_FILE}...")
     records = []
     if not os.path.exists(INPUT_FILE):
-        print(f"File not found: {INPUT_FILE}")
+        logger.error(f"File not found: {INPUT_FILE}")
         return
 
     with open(INPUT_FILE, 'r', encoding='utf-8') as f:
         for line in f:
             if line.strip():
                 records.append(json.loads(line))
-    print(f"Loaded {len(records)} teams.")
+    logger.info(f"Loaded {len(records)} teams.")
 
     # 3. Process & Embed
-    print("Generating embeddings...")
+    logger.info("Generating embeddings...")
     
     updates = []
     bios = []
@@ -97,22 +97,22 @@ def main():
     supabase_key = os.environ.get("SUPABASE_KEY")
     
     if not supabase_url or not supabase_key:
-        print("Missing Supabase credentials. Check .env file.")
+        logger.error("Missing Supabase credentials. Check .env file.")
         return
 
     supabase = create_client(supabase_url, supabase_key)
     
-    print(f"Upserting {len(updates)} records to 'teams' table...")
+    logger.info(f"Upserting {len(updates)} records to 'teams' table...")
     
     for i in range(0, len(updates), BATCH_SIZE):
         batch = updates[i : i + BATCH_SIZE]
         try:
             supabase.table("teams").upsert(batch).execute()
-            print(f"Batch {i//BATCH_SIZE + 1} done.")
+            logger.info(f"Batch {i//BATCH_SIZE + 1} done.")
         except Exception as e:
-            print(f"Error upserting batch: {e}")
+            logger.error(f"Error upserting batch: {e}")
 
-    print("[DONE] All team embeddings updated successfully!")
+    print("✅ All team embeddings updated successfully!")
 
 if __name__ == "__main__":
     main()

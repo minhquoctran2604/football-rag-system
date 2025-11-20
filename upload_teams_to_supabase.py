@@ -20,13 +20,11 @@ EMBEDDING_BATCH_SIZE = 10
 
 
 def gen_team_bio(team_data: dict) -> str:
-    # Fix: access metadata nested structure from JSONL
     meta = team_data.get("metadata", {})
     identity = meta.get("identity", {})
     venue = meta.get("venue", {})
     current_league_raw = meta.get("current_league")
 
-    # Parse current_league: string → dict or keep as-is
     if isinstance(current_league_raw, dict):
         current_league = current_league_raw
     else:
