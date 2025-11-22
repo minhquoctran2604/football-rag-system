@@ -2,6 +2,7 @@
 from src.utils.supabase_client import SupabaseClient
 from src.utils.gemini_client import GeminiClient
 from src.rag.types import QueryContext,Strategy
+
 class Retriever:    
     def __init__(self, supabase: SupabaseClient, gemini_client: GeminiClient, embedding_client: Any):
         self.supabase = supabase
@@ -58,12 +59,10 @@ class Retriever:
         
         try:
             import json
-            # Clean response if needed (sometimes models add markdown code blocks)
             cleaned_response = response.replace("```json", "").replace("```", "").strip()
             decomposed = json.loads(cleaned_response)
             return decomposed
         except:
-            # Fallback
             return {
                 "players": user_question,
                 "teams": user_question
@@ -91,7 +90,6 @@ class Retriever:
             subqueries = self.decompose_query(query)
             k = max(1, top_k // 2)
             
-            # Generate new embeddings for sub-queries
             players_embedding = self.embedding_client.get_embedding(subqueries["players"])
             results_players = self.supabase.search_vectors("players", players_embedding, None, k)
             
@@ -128,6 +126,10 @@ class Retriever:
             filters=filters,
             top_k=top_k,
         )
+        
+    def retrieve_ranking(self, query, filters, sort_field, sort_order) -> list[dict]:
+        table = self.llm_select_table(query)
+        return self.supabase.call_ranking_rpc(table, filters, sort_field, sort_order)
 
     def __call__(   
         self,

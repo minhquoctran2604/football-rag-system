@@ -11,7 +11,7 @@ class SupabaseClient:
         self,
         table: str,
         query_embedding: list[float],
-        filters: dict = None,
+        filters: dict | None = None,
         top_k: int = 5,
     ) -> list[dict]:
         """Search vectors using embedding"""
@@ -43,15 +43,38 @@ class SupabaseClient:
         resp = self.client.table(table).upsert(rows).execute()
         return resp.data
 
-    def search_by_filters(
-        self, table: str, filters: dict, top_k: int = 5
-    ) -> list[dict]:
-        """Search by filters"""
+    def search_by_filters(self, table: str, filters: dict | None = None, top_k: int = 5, sort_field: str | None = None, sort_order: str | None = None) -> list[dict]:
+        """Search by filters with optional sorting"""
         query = self.client.table(table).select("*").limit(top_k)
-        for key, value in filters.items():
-            query = query.eq(key, value)
+        if filters:
+            for key, value in filters.items():
+                query = query.eq(key, value)
+
+        if sort_field and sort_order:
+            column_expr = f"metadata->{sort_field}"
+            query = query.order(column_expr, desc=(sort_order == "DESC"))
+
         resp = query.execute()
         return resp.data
+
+    def call_ranking_rpc(self, table: str, filters: dict|None, sort_field: str, sort_order: str, top_k: int=5):
+        if table == 'teams':
+            rpc_name = "match_teams_ranking"
+        else:
+            rpc_name = "match_players_ranking"
+
+        payload = {
+            'sort_field': sort_field,
+            'sort_order' : sort_order,
+            'filters' : filters,
+            'match_count' : top_k
+        }
+        
+        resp = self.client.rpc(rpc_name,payload).execute()
+        
+        return resp.data
+
+
 
     def table(self, table_name: str):
         """Get table reference"""

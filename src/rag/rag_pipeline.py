@@ -3,6 +3,7 @@ from .generator import ResponseGenerator
 from .query_processor import QueryProcessor
 from .types import Strategy  # import Enum Strategy
 
+
 class RAGPipeline:
     def __init__(
         self,
@@ -17,10 +18,11 @@ class RAGPipeline:
     def __call__(self, query: str) -> dict:
         # query_processor tra ve QueryContext object
         qp = self.query_processor(query)
-        # Use dataclass attributes instead of dictionary access
         strategy: Strategy = qp.strategy
         embedding = qp.embedding
         filters = qp.filters
+        sort_field = qp.sort_field
+        sort_order = qp.sort_order
 
         # 1) lay docs theo strategy
         docs = self._retrieve(
@@ -28,20 +30,22 @@ class RAGPipeline:
             strategy=strategy,
             embedding=embedding,
             filters=filters,
+            sort_field=sort_field,
+            sort_order=sort_order,
         )
 
         # 2) generate cau tra loi
         answer = self.generator(
-            query=query,
-            docs=docs,
-            strategy=strategy,  
-            filters=filters     
+            query=query, 
+            docs=docs or [],  # Fix: Fallback to empty list if None
+            strategy=strategy, 
+            filters=filters
         )
 
         # tra ve them strategy/filters
         return {
             "answer": answer,
-            "context": docs,
+            "context": docs or [],  # Fix: Consistent with generator input
             "strategy": strategy.value,
             "filters": filters or {},
         }
@@ -52,7 +56,9 @@ class RAGPipeline:
         strategy: Strategy,
         embedding: list[float] | None,
         filters: dict | None,
-    ):
+        sort_field: str | None,
+        sort_order: str | None,
+    ) -> list[dict]:
 
         if strategy == Strategy.FILTERS_ONLY:
             # chi dung filters
@@ -68,6 +74,17 @@ class RAGPipeline:
             return self.retriever.retrieve_semantic(
                 query=query,
                 query_embedding=embedding,
+            )
+
+        if strategy == Strategy.RANKING:
+            # chi dung filters va sort
+            if not sort_field or not sort_order:
+                raise ValueError("RANKING strategy requires sort_field and sort_order")
+            return self.retriever.retrieve_ranking(
+                query=query,
+                filters=filters or {},
+                sort_field=sort_field,
+                sort_order=sort_order,
             )
 
         # mac dinh: HYBRID

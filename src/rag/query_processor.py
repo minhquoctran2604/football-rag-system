@@ -1,125 +1,107 @@
 ﻿from __future__ import annotations
-
 import json
 from typing import Dict, Any
-
 from src.utils.gemini_client import GeminiClient
 from src.rag.types import QueryContext, Strategy
 
 
 class QueryProcessor:
-    """Tạo embedding có điều kiện và trích xuất filters + strategy."""
+    # phân tích query chọn chiến lược tối ưu 
 
     def __init__(self, gemini_client: GeminiClient, embedding_client: Any):
         self.gemini = gemini_client
         self.embedding_client = embedding_client
+        self.router_prompt = """
+You are a Query Router for a football RAG system.
+Analyze the user's query and decide the best retrieval strategy.
 
-        # Prompt trích filters (copy lại prompt cũ đầy đủ của bạn)
-        self.system_prompt_filters = """
-You are a highly specialized entity extractor for a football database.
-Your one and only task is to identify specific entities from the user's query.
+**Strategies:**
+1. `ranking`: When user asks for rankings, comparisons, superlatives ("most", "least", "top", "best", "highest", "lowest", "nhiều nhất", "ít nhất", "trẻ nhất", "cao nhất").
+2. `filters_only`: When user asks for a list based on explicit attributes only ("Players from Brazil in La Liga").
+3. `semantic`: When user describes playing style, skills, or vague concepts ("Fast winger with good dribbling").
+4. `hybrid`: When user combines explicit filters with semantic description ("Brazilian striker who is good at headers").
 
-The only entities you are allowed to identify are 'league' and 'nationality'.
+**Output Format (JSON Only):**
+{
+  "strategy": "ranking" | "filters_only" | "semantic" | "hybrid",
+  "filters": {
+    "league": "League Name" | null,
+    "nationality": "Country Name" | null
+  },
+  "sort": {
+    "field": "goals" | "assists" | "age" | "height" | "appearances" | null,
+    "order": "DESC" | "ASC"
+  }
+}
 
-You MUST return a valid JSON object.
-- If you find one or more supported entities, return them as key-value pairs.
-- If no supported entities are found in the query, you MUST return an empty JSON object: {}.
-- Do NOT invent any other keys. Only use 'league' and 'nationality'.
+**Rules:**
+- For `ranking` strategy: `sort.field` and `sort.order` are REQUIRED.
+- `sort.order` = "DESC" for "most/highest/nhiều nhất", "ASC" for "least/youngest/ít nhất/trẻ nhất".
+- `filters` should only extract 'league' and 'nationality'.
+- Return ONLY valid JSON.
 
-Example 1:
-Query: "Find Argentinian players in La Liga"
-Response: {"league": "La Liga", "nationality": "Argentina"}
+**Examples:**
+Query: "Ai ghi nhiều bàn nhất EPL?"
+Response: {"strategy": "ranking", "filters": {"league": "Premier League", "nationality": null}, "sort": {"field": "goals", "order": "DESC"}}
 
-Example 2:
-Query: "Who is the best player in the world?"
-Response: {}
+Query: "Cầu thủ trẻ nhất?"
+Response: {"strategy": "ranking", "filters": {"league": null, "nationality": null}, "sort": {"field": "age", "order": "ASC"}}
 
-Example 3:
-Query: "Show me goalkeepers from Germany"
-Response: {"nationality": "Germany"}
+Query: "Tiền đạo Brazil ở La Liga"
+Response: {"strategy": "filters_only", "filters": {"league": "La Liga", "nationality": "Brazil"}, "sort": {"field": null, "order": null}}
+
+Query: "Cầu thủ chạy nhanh và sút tốt"
+Response: {"strategy": "semantic", "filters": {"league": null, "nationality": null}, "sort": {"field": null, "order": null}}
 """
 
-        # Prompt phân loại strategy
-        self.system_prompt_strategy = """
-Phân loại query football theo 3 loại:
-- filters_only: chỉ chứa thông tin league/nationality (không mô tả skill)
-- semantic: chỉ mô tả skill/đặc điểm, không có league/nationality
-- hybrid: vừa có league/nationality, vừa có mô tả skill
-
-Examples:
-"Italian players in La Liga" → filters_only
-"Show me players from Germany" → filters_only
-"fast winger good at dribbling" → semantic
-"playmaker with great passing vision" → semantic
-"Italian striker with good finishing" → hybrid
-"Brazilian winger in Premier League, very fast" → hybrid
-
-Chỉ trả về đúng một trong 3 từ sau:
-filters_only
-semantic
-hybrid
-
-Query: "{query}"
-Filters: {filters}
-Response:
-"""
-
-    def _extract_filters(self, query: str) -> Dict[str, str]:
-        filters: Dict[str, str] = {}
+    def _analyze_query(self, query: str) -> Dict[str, Any]:
         try:
             response_text = self.gemini.chat(
-                system_prompt=self.system_prompt_filters,
-                user_prompt=f'Query: "{query}"\nResponse:'
+                system_prompt=self.router_prompt,
+                user_prompt=f'Query: "{query}"\nJSON Response:'
             )
+            # Clean markdown code blocks
             clean_response = (
                 response_text.strip()
                 .replace("```json", "")
                 .replace("```", "")
                 .strip()
             )
-            parsed_filters = json.loads(clean_response)
-            allowed_keys = {"league", "nationality"}
-            filters = {
-                key: value
-                for key, value in parsed_filters.items()
-                if key in allowed_keys
+            return json.loads(clean_response)
+        except (json.JSONDecodeError, TypeError) as e:
+            print(f"⚠️ Router Error: {e}. Defaulting to hybrid strategy.")
+            return {
+                "strategy": "hybrid",
+                "filters": {"league": None, "nationality": None},
+                "sort": {"field": None, "order": None}
             }
-        except (json.JSONDecodeError, TypeError):
-            print("Warning: Could not parse filters from LLM response.")
-            filters = {}
-        return filters
-
-    def _decide_strategy(self, query: str, filters: Dict[str, str]) -> Strategy:
-        user_prompt = self.system_prompt_strategy.format(query=query, filters=filters)
-        response = self.gemini.chat(
-            system_prompt="Expert classifier.",
-            user_prompt=user_prompt
-        ).strip().lower()
-
-        token = response.split()[0]
-
-        if "filters_only" in token:
-            return Strategy.FILTERS_ONLY
-        elif "semantic" in token:
-            return Strategy.SEMANTIC
-        else:
-            # Mặc định: hybrid
-            return Strategy.HYBRID
 
     def __call__(self, query: str) -> QueryContext:
-        """Main call: extract → decide → conditional embedding → return QueryContext."""
-        filters = self._extract_filters(query)
-        strategy = self._decide_strategy(query, filters)
+        analysis = self._analyze_query(query)
 
-        embedding = (
-            self.embedding_client.get_embedding(query)
-            if strategy in (Strategy.SEMANTIC, Strategy.HYBRID)
-            else None
-        )
+        strategy_str = analysis.get("strategy", "hybrid")
+        try:
+            strategy = Strategy(strategy_str)
+        except ValueError:
+            print(f"⚠️ Unknown strategy '{strategy_str}', defaulting to HYBRID")
+            strategy = Strategy.HYBRID
+
+        filters_raw = analysis.get("filters") or {}
+        filters = {k: v for k, v in filters_raw.items() if v}  # Remove nulls
+
+        sort_info = analysis.get("sort") or {}
+        sort_field = sort_info.get("field")  # "goals", "age", etc.
+        sort_order = sort_info.get("order")  # "DESC" or "ASC"
+
+        embedding = None
+        if strategy in (Strategy.SEMANTIC, Strategy.HYBRID):
+            embedding = self.embedding_client.get_embedding(query)
 
         return QueryContext(
             raw_query=query,
-            filters=filters,
             strategy=strategy,
+            filters=filters,
             embedding=embedding,
+            sort_field=sort_field,
+            sort_order=sort_order
         )
